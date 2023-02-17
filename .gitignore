@@ -1,0 +1,11 @@
+*.vscode
+cache
+log
+.idea
+.DS_Store
+/bin
+.run
+__debug_bin
+*.history
+nacos
+.fleet
