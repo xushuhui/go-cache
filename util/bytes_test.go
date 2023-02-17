@@ -12,7 +12,6 @@ func TestParseBytes(t *testing.T) {
 		args args
 		want uint64
 	}{
-
 		{"kb", args{s: "1kb"}, 1024},
 	}
 	for _, tt := range tests {

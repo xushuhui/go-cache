@@ -1,6 +1,7 @@
 package local
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ type Cache struct {
 	usedBytes int64
 	store     map[string]entry
 	mu        sync.RWMutex
+	waitDel   chan string
 }
 type entry struct {
 	value      interface{}
@@ -24,16 +26,20 @@ func (e *entry) Len() int64 {
 }
 
 const (
-	DefaultMaxBytes   int64         = 1 << (10 * 3)
-	DefaultExpiration time.Duration = 0
+	DefaultMaxBytes         int64         = 1 << (10 * 3)
+	DefaultExpiration       time.Duration = 0
+	DefaultDelChannelLength               = 100
 )
 
 func New() internal.Cache {
-	return &Cache{
+	c := &Cache{
 		maxBytes:  DefaultMaxBytes,
 		usedBytes: 0,
 		store:     make(map[string]entry),
+		waitDel:   make(chan string, DefaultDelChannelLength),
 	}
+	go c.delete()
+	return c
 }
 
 func (c *Cache) SetMaxMemory(size string) bool {
@@ -54,7 +60,7 @@ func (c *Cache) Set(key string, val interface{}, expire time.Duration) {
 		value:      val,
 		expiration: int64(DefaultExpiration),
 	}
-	if c.usedBytes+e.Len() >= c.maxBytes {
+	if c.usedBytes+e.Len() > c.maxBytes {
 		return
 	}
 	if expire > 0 {
@@ -76,6 +82,7 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 	}
 	if val.expiration > 0 {
 		if time.Now().UnixMicro() > val.expiration {
+			c.waitDel <- key
 			c.mu.RUnlock()
 			return nil, false
 		}
@@ -115,4 +122,16 @@ func (c *Cache) Flush() bool {
 // 返回所有的key 多少
 func (c *Cache) Keys() int64 {
 	return int64(len(c.store))
+}
+func (c *Cache) delete() {
+	for {
+		if v, ok := <-c.waitDel; ok {
+			fmt.Println("wailt del ", v)
+			delete(c.store, v)
+		} else {
+			break
+		}
+
+	}
+
 }
