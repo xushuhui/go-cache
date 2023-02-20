@@ -13,26 +13,10 @@ import (
 type Cache struct {
 	capacity      int64 // 最大容量
 	length        int64 // 已使用容量
-	store         map[string]*entry
+	store         map[string]*internal.Entry
 	mu            sync.RWMutex
 	waitDel       chan string   //
 	clearDuration time.Duration // 定时检查并删除过期缓存
-}
-
-type entry struct {
-	value      interface{}
-	expiration int64 // 单位毫秒
-}
-
-func (v *entry) Expired() bool {
-	if v.expiration == 0 {
-		return false
-	}
-	return time.Now().UnixMicro() > v.expiration
-}
-
-func (e *entry) Len() int64 {
-	return util.CalcLen(e.value)
 }
 
 const (
@@ -45,7 +29,7 @@ func New() internal.Cache {
 	c := &Cache{
 		capacity: DefaultCapacity,
 		length:   0,
-		store:    make(map[string]*entry),
+		store:    make(map[string]*internal.Entry),
 		waitDel:  make(chan string, DefaultDelChannelLength),
 	}
 	go c.work()
@@ -66,18 +50,16 @@ func (c *Cache) Set(key string, val interface{}, expire time.Duration) {
 	if c.length >= c.capacity {
 		return
 	}
-	e := entry{
-		value:      val,
-		expiration: int64(DefaultExpiration),
-	}
+
+	e := internal.NewEntry(key, val, int64(DefaultExpiration))
 	if c.length+e.Len() > c.capacity {
 		return
 	}
 	if expire > 0 {
-		e.expiration = time.Now().Add(expire).UnixMicro()
+		e.SetExpiration(time.Now().Add(expire).UnixMicro())
 	}
 	c.mu.Lock()
-	c.store[key] = &e
+	c.store[key] = e
 	c.length = c.length + e.Len()
 	c.mu.Unlock()
 }
@@ -87,18 +69,16 @@ func (c *Cache) SetE(key string, val interface{}, expire time.Duration) error {
 	if c.length >= c.capacity {
 		return errors.New("cache is out of capacity")
 	}
-	e := entry{
-		value:      val,
-		expiration: int64(DefaultExpiration),
-	}
+	e := internal.NewEntry(key, val, int64(DefaultExpiration))
+
 	if c.length+e.Len() > c.capacity {
 		return errors.New("cache is out of capacity")
 	}
 	if expire > 0 {
-		e.expiration = time.Now().Add(expire).UnixMicro()
+		e.SetExpiration(time.Now().Add(expire).UnixMicro())
 	}
 	c.mu.Lock()
-	c.store[key] = &e
+	c.store[key] = e
 	c.length = c.length + e.Len()
 	c.mu.Unlock()
 	return nil
@@ -118,13 +98,13 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 		return nil, false
 	}
 	c.mu.RUnlock()
-	return val.value, ok
+	return val.Value(), ok
 }
 
 // Del 删除⼀个值
 func (c *Cache) Del(key string) bool {
 	if v, ok := c.Get(key); ok {
-		val := v.(*entry)
+		val := v.(*internal.Entry)
 		c.mu.Lock()
 		deleted := c.delete(key, val)
 		c.mu.Unlock()
@@ -134,7 +114,7 @@ func (c *Cache) Del(key string) bool {
 	return false
 }
 
-func (c *Cache) delete(key string, val *entry) bool {
+func (c *Cache) delete(key string, val *internal.Entry) bool {
 	delete(c.store, key)
 	c.length = c.length - val.Len()
 	return true
@@ -151,7 +131,7 @@ func (c *Cache) Exists(key string) bool {
 // 清空所有值
 func (c *Cache) Flush() bool {
 	c.length = 0
-	c.store = make(map[string]*entry)
+	c.store = make(map[string]*internal.Entry)
 	return true
 }
 

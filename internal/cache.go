@@ -1,6 +1,10 @@
 package internal
 
-import "time"
+import (
+	"time"
+
+	"godis/util"
+)
 
 // ⽀持设定过期时间，精度为秒级。
 // ⽀持设定最⼤内存，当内存超出时候做出合理的处理。
@@ -20,4 +24,45 @@ type Cache interface {
 	Flush() bool
 	// 返回所有的key 多少
 	Keys() int64
+}
+
+type Entry struct {
+	key        string
+	value      interface{}
+	expiration int64 // 单位毫秒
+}
+
+func (v *Entry) Expired() bool {
+	if v.expiration == 0 {
+		return false
+	}
+	return time.Now().UnixMicro() > v.expiration
+}
+
+func (e *Entry) Len() int64 {
+	return util.CalcLen(e.value)
+}
+
+func (e *Entry) Value() interface{} {
+	return e.value
+}
+
+func (e *Entry) Key() string {
+	return e.key
+}
+
+func (e *Entry) SetValue(value interface{}) {
+	e.value = value
+}
+
+func NewEntry(key string, value interface{}, expiration int64) *Entry {
+	return &Entry{
+		key:        key,
+		value:      value,
+		expiration: expiration,
+	}
+}
+
+func (v *Entry) SetExpiration(expiration int64) {
+	v.expiration = expiration
 }
