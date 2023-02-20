@@ -5,10 +5,15 @@ import (
 	"runtime"
 )
 
+type Value interface {
+	Len() int
+}
+
 func CalcLen(value interface{}) int64 {
 	var n int
 	switch v := value.(type) {
-
+	case Value:
+		n = v.Len()
 	case string:
 		if runtime.GOARCH == "amd64" {
 			n = 16 + len(v)

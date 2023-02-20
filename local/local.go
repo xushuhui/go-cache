@@ -1,6 +1,7 @@
 package local
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -10,15 +11,24 @@ import (
 )
 
 type Cache struct {
-	maxBytes  int64
-	usedBytes int64
-	store     map[string]entry
-	mu        sync.RWMutex
-	waitDel   chan string
+	capacity      int64 // 最大容量
+	length        int64 // 已使用容量
+	store         map[string]*entry
+	mu            sync.RWMutex
+	waitDel       chan string   //
+	clearDuration time.Duration // 定时检查并删除过期缓存
 }
+
 type entry struct {
 	value      interface{}
 	expiration int64 // 单位毫秒
+}
+
+func (v *entry) Expired() bool {
+	if v.expiration == 0 {
+		return false
+	}
+	return time.Now().UnixMicro() > v.expiration
 }
 
 func (e *entry) Len() int64 {
@@ -26,19 +36,19 @@ func (e *entry) Len() int64 {
 }
 
 const (
-	DefaultMaxBytes         int64         = 1 << (10 * 3)
+	DefaultCapacity         int64         = 1 << (10 * 3)
 	DefaultExpiration       time.Duration = 0
 	DefaultDelChannelLength               = 100
 )
 
 func New() internal.Cache {
 	c := &Cache{
-		maxBytes:  DefaultMaxBytes,
-		usedBytes: 0,
-		store:     make(map[string]entry),
-		waitDel:   make(chan string, DefaultDelChannelLength),
+		capacity: DefaultCapacity,
+		length:   0,
+		store:    make(map[string]*entry),
+		waitDel:  make(chan string, DefaultDelChannelLength),
 	}
-	go c.delete()
+	go c.work()
 	return c
 }
 
@@ -47,29 +57,51 @@ func (c *Cache) SetMaxMemory(size string) bool {
 	if err != nil {
 		return false
 	}
-	c.maxBytes = int64(userSize)
+	c.capacity = int64(userSize)
 	return true
 }
 
 // Set 设置⼀个缓存项，并且在expire时间之后过期
 func (c *Cache) Set(key string, val interface{}, expire time.Duration) {
-	if c.usedBytes >= c.maxBytes {
+	if c.length >= c.capacity {
 		return
 	}
 	e := entry{
 		value:      val,
 		expiration: int64(DefaultExpiration),
 	}
-	if c.usedBytes+e.Len() > c.maxBytes {
+	if c.length+e.Len() > c.capacity {
 		return
 	}
 	if expire > 0 {
 		e.expiration = time.Now().Add(expire).UnixMicro()
 	}
 	c.mu.Lock()
-	c.store[key] = e
-	c.usedBytes = c.usedBytes + e.Len()
+	c.store[key] = &e
+	c.length = c.length + e.Len()
 	c.mu.Unlock()
+}
+
+// set 优化版本
+func (c *Cache) SetE(key string, val interface{}, expire time.Duration) error {
+	if c.length >= c.capacity {
+		return errors.New("cache is out of capacity")
+	}
+	e := entry{
+		value:      val,
+		expiration: int64(DefaultExpiration),
+	}
+	if c.length+e.Len() > c.capacity {
+		return errors.New("cache is out of capacity")
+	}
+	if expire > 0 {
+		e.expiration = time.Now().Add(expire).UnixMicro()
+	}
+	c.mu.Lock()
+	c.store[key] = &e
+	c.length = c.length + e.Len()
+	c.mu.Unlock()
+	return nil
 }
 
 // Get 获取⼀个值
@@ -80,12 +112,10 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 		c.mu.RUnlock()
 		return nil, false
 	}
-	if val.expiration > 0 {
-		if time.Now().UnixMicro() > val.expiration {
-			c.waitDel <- key
-			c.mu.RUnlock()
-			return nil, false
-		}
+	if val.Expired() {
+		c.waitDel <- key
+		c.mu.RUnlock()
+		return nil, false
 	}
 	c.mu.RUnlock()
 	return val.value, ok
@@ -93,15 +123,21 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 
 // Del 删除⼀个值
 func (c *Cache) Del(key string) bool {
-
-	if c.Exists(key) {
+	if v, ok := c.Get(key); ok {
+		val := v.(*entry)
 		c.mu.Lock()
-		delete(c.store, key)
+		deleted := c.delete(key, val)
 		c.mu.Unlock()
-		return true
+		return deleted
 	}
 
 	return false
+}
+
+func (c *Cache) delete(key string, val *entry) bool {
+	delete(c.store, key)
+	c.length = c.length - val.Len()
+	return true
 }
 
 // 检测⼀个值 是否存在
@@ -114,8 +150,8 @@ func (c *Cache) Exists(key string) bool {
 
 // 清空所有值
 func (c *Cache) Flush() bool {
-	c.usedBytes = 0
-	c.store = make(map[string]entry)
+	c.length = 0
+	c.store = make(map[string]*entry)
 	return true
 }
 
@@ -123,15 +159,25 @@ func (c *Cache) Flush() bool {
 func (c *Cache) Keys() int64 {
 	return int64(len(c.store))
 }
-func (c *Cache) delete() {
-	for {
-		if v, ok := <-c.waitDel; ok {
-			fmt.Println("wailt del ", v)
-			delete(c.store, v)
-		} else {
-			break
+
+func (c *Cache) expireClear() {
+	for k, v := range c.store {
+		if v.Expired() {
+			fmt.Printf("del expire key:%s \n", k)
+			c.delete(k, v)
 		}
-
 	}
+}
 
+func (c *Cache) work() {
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			c.expireClear()
+		case k := <-c.waitDel:
+			fmt.Printf("del wait key:%s \n", k)
+			c.delete(k, c.store[k])
+		}
+	}
 }
