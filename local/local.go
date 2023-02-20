@@ -25,7 +25,7 @@ const (
 	DefaultDelChannelLength               = 100
 )
 
-func New() internal.Cache {
+func New() *Cache {
 	c := &Cache{
 		capacity: DefaultCapacity,
 		length:   0,
@@ -46,22 +46,31 @@ func (c *Cache) SetMaxMemory(size string) bool {
 }
 
 // Set 设置⼀个缓存项，并且在expire时间之后过期
-func (c *Cache) Set(key string, val interface{}, expire time.Duration) {
+func (c *Cache) Set(key string, value interface{}, expire time.Duration) {
 	if c.length >= c.capacity {
 		return
 	}
 
-	e := internal.NewEntry(key, val, int64(DefaultExpiration))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if en, ok := c.store[key]; ok {
+		c.length = c.length - util.CalcLen(en.Value()) + util.CalcLen(value)
+
+		en.SetValue(value)
+		return
+	}
+
+	e := internal.NewEntry(key, value, int64(DefaultExpiration))
 	if c.length+e.Len() > c.capacity {
 		return
 	}
 	if expire > 0 {
 		e.SetExpiration(time.Now().Add(expire).UnixMicro())
 	}
-	c.mu.Lock()
+
 	c.store[key] = e
 	c.length = c.length + e.Len()
-	c.mu.Unlock()
+
 }
 
 // set 优化版本
@@ -87,7 +96,7 @@ func (c *Cache) SetE(key string, val interface{}, expire time.Duration) error {
 // Get 获取⼀个值
 func (c *Cache) Get(key string) (interface{}, bool) {
 	c.mu.RLock()
-	val, ok := c.store[key]
+	val, ok := c.get(key)
 	if !ok {
 		c.mu.RUnlock()
 		return nil, false
@@ -100,13 +109,17 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 	c.mu.RUnlock()
 	return val.Value(), ok
 }
+func (c *Cache) get(key string) (*internal.Entry, bool) {
+	val, ok := c.store[key]
+	return val, ok
+}
 
 // Del 删除⼀个值
 func (c *Cache) Del(key string) bool {
-	if v, ok := c.Get(key); ok {
-		val := v.(*internal.Entry)
+	if v, ok := c.get(key); ok {
+
 		c.mu.Lock()
-		deleted := c.delete(key, val)
+		deleted := c.delete(key, v)
 		c.mu.Unlock()
 		return deleted
 	}

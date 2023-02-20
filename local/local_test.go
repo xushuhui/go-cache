@@ -47,10 +47,10 @@ func TestCache_Get(t *testing.T) {
 	// t.Log(c.Get("k1"))
 
 	time.Sleep(3 * time.Second)
-	// t.Log(c.Get("k0"))
-	// t.Log(c.Get("k1"))
-	// t.Log(c.Get("k2"))
-	// t.Log(c.Get("k3"))
+	t.Log(c.Get("k0"))
+	t.Log(c.Get("k1"))
+	t.Log(c.Get("k2"))
+	t.Log(c.Get("k3"))
 	// t.Log(c)
 }
 
@@ -65,5 +65,5 @@ func TestCache_SetMaxMemory(t *testing.T) {
 	c.SetMaxMemory("1b")
 	t.Log(c)
 	c.Set("k1", "v1", 3*time.Second)
-	// t.Log(c.Get("k1"))
+	t.Log(c.Get("k1"))
 }

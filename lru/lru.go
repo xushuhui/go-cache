@@ -24,14 +24,14 @@ const (
 	DefaultDelChannelLength               = 100
 )
 
-func New() internal.Cache {
+func New() *Cache {
 	c := &Cache{
 		capacity: DefaultCapacity,
 		length:   0,
 		store:    make(map[string]*list.Element),
 		list:     list.New(),
 	}
-	// go c.work()
+
 	return c
 }
 
