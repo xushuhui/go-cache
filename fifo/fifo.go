@@ -46,12 +46,10 @@ func (c *Cache) Set(key string, value interface{}, expire time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.store[key]; ok {
-
 		c.list.MoveToBack(e)
 		en := e.Value.(*internal.Entry)
 		c.length = c.length - util.CalcLen(en.Value()) + util.CalcLen(value)
 		en.SetValue(value)
-
 		return
 	}
 

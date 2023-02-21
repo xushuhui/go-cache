@@ -32,11 +32,11 @@ type Entry struct {
 	expiration int64 // 单位毫秒
 }
 
-func (v *Entry) Expired() bool {
-	if v.expiration == 0 {
+func (e *Entry) Expired() bool {
+	if e.expiration == 0 {
 		return false
 	}
-	return time.Now().UnixMicro() > v.expiration
+	return time.Now().UnixMicro() > e.expiration
 }
 
 func (e *Entry) Len() int64 {
@@ -63,6 +63,6 @@ func NewEntry(key string, value interface{}, expiration int64) *Entry {
 	}
 }
 
-func (v *Entry) SetExpiration(expiration int64) {
-	v.expiration = expiration
+func (e *Entry) SetExpiration(expiration int64) {
+	e.expiration = expiration
 }

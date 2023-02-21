@@ -1,7 +1,6 @@
 package local
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -48,6 +47,7 @@ func (c *Cache) SetMaxMemory(size string) bool {
 // Set 设置⼀个缓存项，并且在expire时间之后过期
 func (c *Cache) Set(key string, value interface{}, expire time.Duration) {
 	if c.length >= c.capacity {
+		fmt.Println("cache is out of capacity")
 		return
 	}
 
@@ -62,6 +62,7 @@ func (c *Cache) Set(key string, value interface{}, expire time.Duration) {
 
 	e := internal.NewEntry(key, value, int64(DefaultExpiration))
 	if c.length+e.Len() > c.capacity {
+		fmt.Println("cache is out of capacity")
 		return
 	}
 	if expire > 0 {
@@ -70,27 +71,6 @@ func (c *Cache) Set(key string, value interface{}, expire time.Duration) {
 
 	c.store[key] = e
 	c.length = c.length + e.Len()
-
-}
-
-// set 优化版本
-func (c *Cache) SetE(key string, val interface{}, expire time.Duration) error {
-	if c.length >= c.capacity {
-		return errors.New("cache is out of capacity")
-	}
-	e := internal.NewEntry(key, val, int64(DefaultExpiration))
-
-	if c.length+e.Len() > c.capacity {
-		return errors.New("cache is out of capacity")
-	}
-	if expire > 0 {
-		e.SetExpiration(time.Now().Add(expire).UnixMicro())
-	}
-	c.mu.Lock()
-	c.store[key] = e
-	c.length = c.length + e.Len()
-	c.mu.Unlock()
-	return nil
 }
 
 // Get 获取⼀个值
@@ -109,6 +89,7 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 	c.mu.RUnlock()
 	return val.Value(), ok
 }
+
 func (c *Cache) get(key string) (*internal.Entry, bool) {
 	val, ok := c.store[key]
 	return val, ok
@@ -145,6 +126,7 @@ func (c *Cache) Exists(key string) bool {
 func (c *Cache) Flush() bool {
 	c.length = 0
 	c.store = make(map[string]*internal.Entry)
+	c.waitDel = nil
 	return true
 }
 

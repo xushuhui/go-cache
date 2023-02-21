@@ -2,15 +2,17 @@ package lfu
 
 import (
 	"container/heap"
-	"go-cache/util"
 	"runtime"
+
+	"go-cache/util"
 )
 
 type entry struct {
-	key    string
-	value  interface{}
-	weight int
-	index  int
+	key        string
+	value      interface{}
+	weight     int
+	index      int
+	expiration int64 // 单位毫秒
 }
 
 func (e *entry) Len() int64 {
