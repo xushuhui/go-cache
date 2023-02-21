@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"godis/internal"
-	"godis/util"
+	"go-cache/internal"
+	"go-cache/util"
 )
 
 type Cache struct {
@@ -20,7 +20,7 @@ type Cache struct {
 }
 
 const (
-	DefaultCapacity         int64         = 1 << (10 * 3)
+	DefaultCapacity         int64         = 1 << (10 * 2)
 	DefaultExpiration       time.Duration = 0
 	DefaultDelChannelLength               = 100
 )

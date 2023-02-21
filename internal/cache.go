@@ -3,7 +3,7 @@ package internal
 import (
 	"time"
 
-	"godis/util"
+	"go-cache/util"
 )
 
 // ⽀持设定过期时间，精度为秒级。

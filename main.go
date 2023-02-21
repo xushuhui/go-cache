@@ -1,10 +1,10 @@
 package main
 
 import (
-	"godis/fifo"
-	"godis/internal"
-	"godis/local"
-	"godis/lru"
+	"go-cache/fifo"
+	"go-cache/internal"
+	"go-cache/local"
+	"go-cache/lru"
 )
 
 func main() {
